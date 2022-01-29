@@ -1,0 +1,151 @@
+library(tidyverse)
+library(tidytuesdayR)
+library(ggplot2)
+library(showtext)
+
+# load data
+tuesdata <- tidytuesdayR::tt_load('2022-01-25')
+details <- tuesdata$details
+ratings <- tuesdata$ratings
+
+# pandemic keywords
+# I came up with some of these on my own, and copied some from this text mining paper doing
+# sentiment analysis on news articles about the pandemic:
+# https://www.jmir.org/2021/6/e28253/
+# Krawczyk et al. (2021) "Quantifying Online News Media Coverage of the COVID-19 Pandemic: Text Mining Study and Resource"
+pandemic_words <- c("pandemic",
+                    "Pandemic",
+                    "COVID",
+                    "Covid",
+                    "covid",
+                    "Virus",
+                    "virus",
+                    " sick",
+                    " Sick",
+                    "contagion",
+                    "Contagion",
+                    "Health",
+                    "health",
+                    "Disease",
+                    "diseas",
+                    "Hospital",
+                    "hospit",
+                    "Infection",
+                    "infect",
+                    "Isolation",
+                    "isolat",
+                    "Lockdown",
+                    "lockdown",
+                    "Outbreak",
+                    "outbreak",
+                    "Quarantine",
+                    "quarantin",
+                    "Symptom",
+                    "symptom",
+                    "Vaccine",
+                    "vaccin"
+)
+
+
+# pandemic keyword function
+# pass it a string and vector of words
+# if it finds any of the words you want it in the string, it returns a 1
+# if not, it returns a 0
+find_words1 <- function(string,
+                        words = pandemic_words) {
+  result <- str_detect(string, words)
+  if (is.na(result[1]) != TRUE &
+      sum(result) > 0) {
+    return(1)
+  } else {
+    return(0)
+  }
+}
+find_words <- Vectorize(find_words1)
+
+# create a variable that takes the value 1 if the game description contains pandemic keywords,
+# 0 if not
+details <- details %>%
+  filter(yearpublished > 1950) %>%
+  mutate(pandemic = find_words(description))
+
+# Now I need some way to collapse the data into rows that contain:
+# 1. A unique year value
+# 2. Percent of games whose descriptions contained a pandemic keyword for that year
+# I feel like there's got to be an efficient a way to do this without loops - but I can't think of it, so I use a loop below.
+unique_years <- unique(details$yearpublished) # make vector of unqiue years
+pandemic_games <- tibble() # make blank tibble to add new rows to in below loop
+for (year in unique_years) {
+  pandemic_games <- details %>%
+    filter(yearpublished == year) %>%
+    summarize(pandemic = sum(pandemic),
+              total = length(id)) %>%
+    mutate(pandemic_pct = (pandemic/total)*100) %>%
+    cbind(year, .) %>%
+    rbind(pandemic_games, .)
+}
+
+## Loading Google fonts (https://fonts.google.com/)
+font_add_google("Merriweather", "merriweather")
+showtext_auto()
+destination la3s
+642
+540
+96.99 alignment
+engine filter 54, 64.88
+
+# I put my fixed values up here so I can alter them easily
+start_year <- 2005
+ymax <- 60
+grid_color <- "#54738E"
+line_color <- "#8F3B1B"
+color_2020 <- "#CA8F42"
+x.axis <- seq(start_year, 2025, by=5)
+x.labels.color <- ifelse(x.axis == 2020, color_2020, grid_color)
+
+# plot
+pandemic_plot <- ggplot(pandemic_games %>% filter(year >= start_year),
+                        aes(x=year, y=pandemic_pct)) +
+  geom_vline(xintercept = 2020,
+             color = color_2020) +
+  geom_line(color = line_color,
+            size = 2) +
+  theme_minimal() +
+  scale_x_continuous(breaks = x.axis) +
+  scale_y_continuous(limits = c(0, ymax), breaks = seq(0, ymax, by=10)) +
+  labs(y = "Percent new games\nwith pandemic\nrelated content",
+     x = "Year",
+     title = "Board game creators published more disease-related\ngames following the COVID-19 pandemic",
+     subtitle = "Keywords such as 'pandemic', 'contagion', and 'isolation' spiked\nin board game descriptions published after 2020",
+     caption = "Data: Kaggle & BoardGameGeek\nVisualization: Justin Giles"
+) +
+  theme(
+    plot.background = element_rect(fill = '#C1D2D6', color = '#C1D2D6'),
+    axis.title.y=element_text(family="merriweather",
+                              size = 9,
+                              color = grid_color,
+                              angle = 0,
+                              hjust = 0.95),
+    axis.title.x=element_text(family="merriweather",
+                              size = 9,
+                              color = grid_color),
+    plot.title = element_text(size = 14, 
+                              family = "merriweather",
+                              color = grid_color,
+                              face = "bold"),
+    plot.subtitle = element_text(size = 11,
+                                 family = "merriweather",
+                                 color = grid_color),
+    plot.caption = element_text(size = 8,
+                                family = "merriweather",
+                                colour = grid_color),
+    axis.text.y = element_text(size = 10,
+                               family = "merriweather",
+                               color = grid_color),
+    axis.text.x = element_text(size = 10,
+                               family = "merriweather",
+                               color = x.labels.color),
+    panel.grid = element_line(color = grid_color)
+  )
+pandemic_plot
+
