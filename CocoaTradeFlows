@@ -1,0 +1,92 @@
+# Note: This code leans heavily on code from from Laura Navarro:
+# https://github.com/lau-cloud/TidyTuesdaycode/blob/master/follow_the_cacao/scipt.R#L139
+
+# install.packages("ggalluvial")
+# install.packages("showtext")
+library(tidyverse)
+library(ggplot2)
+library(ggalluvial)
+library(showtext)
+
+library(tidytuesdayR)   # install.packages("tidytuesdayR") to get new data
+
+# load data
+tuesdata <- tidytuesdayR::tt_load('2022-01-18')
+choc <- tuesdata$chocolate %>% filter(country_of_bean_origin != "Blend") # get rid of "blend" of countries of origin for cocoa beans - I won't need it
+
+# function that returns the 10 most frequent observations of a given variable in a given data frame
+get_tops <- function(dta, variable) {
+  tops.dta <- count(dta, .data[[variable]]) %>% arrange(-n)
+  tops <- tops.dta[[variable]][1:10]
+  tops
+}
+
+## Get google fonts
+font_add_google("Merriweather", "merriweather")
+showtext_auto()
+
+big_choc <- choc %>%
+  filter(country_of_bean_origin %in% get_tops(choc, "country_of_bean_origin")[1:5]) %>%
+  filter(company_location %in% get_tops(choc, "company_location")[1:5]) %>%
+  filter(company_manufacturer %in% get_tops(choc, "company_manufacturer")[1:5]) %>%
+  count(company_manufacturer, country_of_bean_origin, company_location) %>% 
+  mutate(origin = "origin",
+         country_of_bean_origin = ifelse(country_of_bean_origin == "Dominican Republic",
+                                         "DR",
+                                         country_of_bean_origin)
+  ) %>% 
+  rename(total = "n")
+
+# colors used for trade flows
+color_palette  <- c("#CBA42C", 
+                    "#404f24", 
+                    "#D57500", 
+                    "#8B9A46", 
+                    "#8F3B1B")
+
+
+# plot
+cocoa_trade_flows <- ggplot(big_choc,
+                            aes(axis1 = company_manufacturer,
+                                axis2 = company_location,
+                                axis3 = country_of_bean_origin,
+                                y = total)) +
+  geom_alluvium(aes(fill = country_of_bean_origin),
+                curve_type = "quintic",
+                width = 1/12,
+                knot.pos = 0.4,
+                alpha= 0.7) +
+  geom_stratum(aes(fill = country_of_bean_origin),
+               width = 1/6,
+               color = "#162240",
+               alpha=1,
+               linetype="solid",
+               fill ="#CAC792") +
+  scale_color_manual(values = color_palette) +
+  scale_fill_manual(values = color_palette) + 
+  geom_text(stat = "stratum",
+            aes(label = after_stat(stratum)),
+            color = '#162240',
+            family="merriweather",
+            size = 3) +
+  theme_minimal() +
+  coord_flip() +
+  labs(x="", y="") +
+  labs(title = "Cocoa beans flow from the global south to the north\nfor processing by chocolate manufacturers",
+       caption = " Data: Flavors of Cocoa, Gergios & Kelsey \n Visualization: Justin Giles \n Credit to Laura Navarro (Twitter: @LauraNavarroSol)") +
+  theme(
+    plot.background = element_rect(fill = '#162240', colour = '#162240'),
+    legend.position = "none",
+    plot.title = element_text(size = 15, 
+                              family = "merriweather",
+                              color = "#CAC792"),
+    plot.caption = element_text(size=8,
+                                family = "merriweather",
+                                colour = "#CAC792"),
+    panel.grid.major = element_blank(), 
+    panel.grid.minor = element_blank(),
+    axis.text.y = element_blank(),
+    axis.text.x = element_blank()
+  )
+
+cocoa_trade_flows
