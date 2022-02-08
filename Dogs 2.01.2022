@@ -1,0 +1,173 @@
+# Only need ranking data
+breed_rank_all <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-02-01/breed_rank.csv')
+
+# Fix variable names with janitor package
+breed_rank_all <- clean_names(breed_rank_all) %>%
+  select(!c("links", "image"))
+  
+ # check to see if there are any ranking points at which
+# all dogs with a higher ranking existed under that ranking in both
+# 2013 and 2020 - there aren't, tho there are for other years
+# here I show that it works for 2015 & 2020
+rank.limits <- c()
+for (i in 1:nrow(breed_rank_all)) {
+  initial <- breed_rank_all %>% filter(x2015_rank %in% 1:i)
+  final <- breed_rank_all %>% filter(x2020_rank %in% 1:i)
+  check <- initial$breed %in% final$breed
+  if (sum(check) == length(check)) {
+    rank.limits <- append(rank.limits, i)
+  } else {}
+}
+rank.limits
+
+
+# make function that will clean year names (for after putting data in long format)
+get_year <- function(string) {
+  step1 <- strsplit(string, "_rank")[[1]]
+  strsplit(step1, "x")[[1]][2] %>% as.numeric()
+}
+get_year <- Vectorize(get_year)
+
+# put data in long format
+ranks_long <- breed_rank_all %>%
+  pivot_longer(cols = starts_with("x"),
+               names_to = "year",
+               values_to = "rank") %>%
+  mutate(year = get_year(year))
+
+# limit data to only top X breeds in 2020
+  # make vector of top X in 2020
+minimum_year <- 2015
+final_year <- 2020
+highest_rank <- 20
+desired_breeds <- ranks_long %>%
+  filter(year == final_year & rank <= highest_rank) %>%
+  select(breed) %>%
+  distinct()
+  # limit data framer to breeds in that vector
+topdogs <- ranks_long %>%
+  filter(breed %in% desired_breeds$breed) %>%
+  filter(year >= minimum_year)
+topdogs <- topdogs %>%
+  mutate(line.labels = ifelse(year == min(topdogs$year), breed, NA)) # add labels for lines when plotting
+ 
+ 
+# get google fonts
+library(showtext)
+## Loading Google fonts (https://fonts.google.com/)
+font_add_google("Merriweather", "merriweather")
+my_font <- "merriweather"
+showtext_auto()
+
+
+# make titles for dual axes
+y1_title <- paste("Top", highest_rank) %>%
+  paste("Dogs\nin") %>%
+  paste(minimum_year)
+y2_title <- paste("Top", highest_rank) %>%
+  paste("Dogs\nin") %>%
+  paste(final_year)
+
+
+labels_initial <- topdogs %>%
+  filter(year == minimum_year) %>%
+  arrange(rank) %>%
+  mutate(label_col = paste(breed, paste(" ", rank))) %>%
+  pull(label_col)
+labels_final <- topdogs %>%
+  filter(year == final_year) %>%
+  arrange(rank) %>%
+  mutate(label_col = paste(rank, paste(" ", breed))) %>%
+  pull(label_col)
+
+
+# color palette
+line_color <- "#58508d"
+increasing_color <- "#ffa600"
+decreasing_color <- "#ff6361"
+text_color <- "#003f5c"
+my_colors <- rep(line_color, highest_rank)
+
+# replace colors by breed function
+# uses sort() because scale_color_manual() sorts groups by alphabetical order
+replace_color <- function(color_vector, replacement_color, dog_breed) {
+  colory <- color_vector
+  colory[
+    sort(topdogs %>% filter(year == minimum_year) %>% pull(breed)) == dog_breed
+  ] <- replacement_color
+  colory
+}
+
+# replace some colors
+my_colors <- replace_color(my_colors, increasing_color, "French Bulldogs")
+my_colors <- replace_color(my_colors, increasing_color, "Pembroke Welsh Corgis")
+my_colors <- replace_color(my_colors, increasing_color, "Australian Shepherds")
+my_colors <- replace_color(my_colors, decreasing_color, "Yorkshire Terriers")
+
+# y axis colors
+y1_colors <- case_when(labels_initial == "French Bulldogs   6" ~ increasing_color,
+                    labels_initial == "Pembroke Welsh Corgis   20" ~ increasing_color,
+                    labels_initial == "Australian Shepherds   17" ~ increasing_color,
+                    labels_initial == "Yorkshire Terriers   7" ~ decreasing_color,
+                    TRUE ~ line_color)
+y2_colors <- case_when(labels_final == "2   French Bulldogs" ~ increasing_color,
+                       labels_final == "11   Pembroke Welsh Corgis" ~ increasing_color,
+                       labels_final == "12   Australian Shepherds" ~ increasing_color,
+                       labels_final == "13   Yorkshire Terriers" ~ decreasing_color,
+                       TRUE ~ line_color)
+
+
+# make plot
+plot <- ggplot(topdogs,
+               aes(x = year,
+                   y = rank,
+                   group = breed,
+                   color = breed)
+) +
+  geom_line(size = 1) +
+  scale_color_manual(values = my_colors) +
+  theme_classic() +
+  scale_y_reverse(name = y1_title,
+                  breaks = seq(from = 1, to = max(topdogs$rank), by = 1),
+                  labels = labels_initial,
+                  sec.axis = sec_axis(trans = ~.*1,
+                                      name = y2_title,
+                                      breaks = seq(from = 1,
+                                                   to = max(topdogs$rank),
+                                                   by = 1),
+                                      labels = labels_final
+                  )
+  ) +
+  theme(legend.position = "none",
+        plot.title.position = "plot",
+        plot.caption.position =  "plot",
+        text = element_text(family = my_font,
+                            color = text_color),
+        title = element_text(face = "bold"),
+        plot.title = element_text(size = 18),
+        plot.subtitle = element_text(size = 12,
+                                     face = "plain"),
+        plot.caption = element_text(size = 8),
+        axis.title.y.left = element_text(angle = 0,
+                                         family=my_font,
+                                         hjust = 0.97,
+                                         vjust = 0.9),
+        axis.title.y.right = element_text(angle = 0,
+                                          family=my_font,
+                                          hjust = 0.95,
+                                          vjust = 0.9),
+        axis.text.y.left = element_text(color = y1_colors),
+        axis.text.y.right = element_text(color = y2_colors),
+        axis.line = element_blank(),
+        axis.ticks = element_blank()
+  ) +
+  labs(title = "Aussies, Corgis, and Frenchies are becoming more popular",
+       subtitle = "Meanwhile, Yorkies may be losing some appeal",
+       caption = "Data: Amercian Kennel Club\nVisualization: Justin Giles"
+  ) +
+  xlab("Year")
+
+plot
+
+
+#
